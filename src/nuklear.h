@@ -3271,14 +3271,14 @@ NK_API void nk_popup_set_scroll(struct nk_context*, nk_uint offset_x, nk_uint of
  *                                  COMBOBOX
  *
  * ============================================================================= */
-NK_API nk_bool nk_combo(struct nk_context*, const char **items, int count, nk_bool selected, int item_height, struct nk_vec2 size);
-NK_API nk_bool nk_combo_separator(struct nk_context*, const char *items_separated_by_separator, int separator, nk_bool selected, int count, int item_height, struct nk_vec2 size);
-NK_API nk_bool nk_combo_string(struct nk_context*, const char *items_separated_by_zeros, nk_bool selected, int count, int item_height, struct nk_vec2 size);
-NK_API nk_bool nk_combo_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void *userdata, nk_bool selected, int count, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox(struct nk_context*, const char **items, int count, nk_bool *selected, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox_string(struct nk_context*, const char *items_separated_by_zeros, nk_bool *selected, int count, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox_separator(struct nk_context*, const char *items_separated_by_separator, int separator, nk_bool *selected, int count, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void*, nk_bool *selected, int count, int item_height, struct nk_vec2 size);
+NK_API int nk_combo(struct nk_context*, const char **items, int count, int selected, int item_height, struct nk_vec2 size);
+NK_API int nk_combo_separator(struct nk_context*, const char *items_separated_by_separator, int separator, int selected, int count, int item_height, struct nk_vec2 size);
+NK_API int nk_combo_string(struct nk_context*, const char *items_separated_by_zeros, int selected, int count, int item_height, struct nk_vec2 size);
+NK_API int nk_combo_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void *userdata, int selected, int count, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox(struct nk_context*, const char **items, int count, int *selected, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox_string(struct nk_context*, const char *items_separated_by_zeros, int *selected, int count, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox_separator(struct nk_context*, const char *items_separated_by_separator, int separator, int *selected, int count, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void*, int *selected, int count, int item_height, struct nk_vec2 size);
 /* =============================================================================
  *
  *                                  ABSTRACT COMBOBOX
@@ -5478,18 +5478,6 @@ template<typename T> struct nk_alignof{struct Big {T x; char c;}; enum {
 #define NK_ALIGNOF(t) (__alignof(t))
 #else
 #define NK_ALIGNOF(t) ((char*)(&((struct {char c; t _h;}*)0)->_h) - (char*)0)
-#endif
-
-#ifdef NK_IMPLEMENTATION
-#define STB_RECT_PACK_IMPLEMENTATION
-#define STB_TRUETYPE_IMPLEMENTATION
-#endif
-
-#ifndef STBTT_malloc
-static nk_handle fictional_handle = {0};
-
-#define STBTT_malloc(x,u)  nk_malloc( fictional_handle, 0, x )
-#define STBTT_free(x,u)    nk_mfree( fictional_handle , x)
 #endif
 
 #endif /* NK_NUKLEAR_H_ */

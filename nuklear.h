@@ -3492,14 +3492,14 @@ NK_API void nk_popup_set_scroll(struct nk_context*, nk_uint offset_x, nk_uint of
  *                                  COMBOBOX
  *
  * ============================================================================= */
-NK_API nk_bool nk_combo(struct nk_context*, const char **items, int count, nk_bool selected, int item_height, struct nk_vec2 size);
-NK_API nk_bool nk_combo_separator(struct nk_context*, const char *items_separated_by_separator, int separator, nk_bool selected, int count, int item_height, struct nk_vec2 size);
-NK_API nk_bool nk_combo_string(struct nk_context*, const char *items_separated_by_zeros, nk_bool selected, int count, int item_height, struct nk_vec2 size);
-NK_API nk_bool nk_combo_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void *userdata, nk_bool selected, int count, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox(struct nk_context*, const char **items, int count, nk_bool *selected, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox_string(struct nk_context*, const char *items_separated_by_zeros, nk_bool *selected, int count, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox_separator(struct nk_context*, const char *items_separated_by_separator, int separator, nk_bool *selected, int count, int item_height, struct nk_vec2 size);
-NK_API void nk_combobox_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void*, nk_bool *selected, int count, int item_height, struct nk_vec2 size);
+NK_API int nk_combo(struct nk_context*, const char **items, int count, int selected, int item_height, struct nk_vec2 size);
+NK_API int nk_combo_separator(struct nk_context*, const char *items_separated_by_separator, int separator, int selected, int count, int item_height, struct nk_vec2 size);
+NK_API int nk_combo_string(struct nk_context*, const char *items_separated_by_zeros, int selected, int count, int item_height, struct nk_vec2 size);
+NK_API int nk_combo_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void *userdata, int selected, int count, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox(struct nk_context*, const char **items, int count, int *selected, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox_string(struct nk_context*, const char *items_separated_by_zeros, int *selected, int count, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox_separator(struct nk_context*, const char *items_separated_by_separator, int separator, int *selected, int count, int item_height, struct nk_vec2 size);
+NK_API void nk_combobox_callback(struct nk_context*, void(*item_getter)(void*, int, const char**), void*, int *selected, int count, int item_height, struct nk_vec2 size);
 /* =============================================================================
  *
  *                                  ABSTRACT COMBOBOX
@@ -5701,18 +5701,6 @@ template<typename T> struct nk_alignof{struct Big {T x; char c;}; enum {
 #define NK_ALIGNOF(t) ((char*)(&((struct {char c; t _h;}*)0)->_h) - (char*)0)
 #endif
 
-#ifdef NK_IMPLEMENTATION
-#define STB_RECT_PACK_IMPLEMENTATION
-#define STB_TRUETYPE_IMPLEMENTATION
-#endif
-
-#ifndef STBTT_malloc
-static nk_handle fictional_handle = {0};
-
-#define STBTT_malloc(x,u)  nk_malloc( fictional_handle, 0, x )
-#define STBTT_free(x,u)    nk_mfree( fictional_handle , x)
-#endif
-
 #endif /* NK_NUKLEAR_H_ */
 
 #ifdef NK_IMPLEMENTATION
@@ -6042,6 +6030,32 @@ NK_LIB void nk_property_behavior(nk_flags *ws, const struct nk_input *in, struct
 NK_LIB void nk_draw_property(struct nk_command_buffer *out, const struct nk_style_property *style, const struct nk_rect *bounds, const struct nk_rect *label, nk_flags state, const char *name, int len, const struct nk_user_font *font);
 NK_LIB void nk_do_property(nk_flags *ws, struct nk_command_buffer *out, struct nk_rect property, const char *name, struct nk_property_variant *variant, float inc_per_pixel, char *buffer, int *len, int *state, int *cursor, int *select_begin, int *select_end, const struct nk_style_property *style, enum nk_property_filter filter, struct nk_input *in, const struct nk_user_font *font, struct nk_text_edit *text_edit, enum nk_button_behavior behavior);
 NK_LIB void nk_property(struct nk_context *ctx, const char *name, struct nk_property_variant *variant, float inc_per_pixel, const enum nk_property_filter filter);
+
+#ifdef NK_INCLUDE_FONT_BAKING
+
+#define STB_RECT_PACK_IMPLEMENTATION
+#define STB_TRUETYPE_IMPLEMENTATION
+
+/* Allow consumer to define own STBTT_malloc/STBTT_free, and use the font atlas' allocator otherwise */
+#ifndef STBTT_malloc
+static void*
+nk_stbtt_malloc(nk_size size, void *user_data) {
+	struct nk_allocator *alloc = (struct nk_allocator *) user_data;
+	return alloc->alloc(alloc->userdata, 0, size);
+}
+
+static void
+nk_stbtt_free(void *ptr, void *user_data) {
+	struct nk_allocator *alloc = (struct nk_allocator *) user_data;
+	alloc->free(alloc->userdata, ptr);
+}
+
+#define STBTT_malloc(x,u)  nk_stbtt_malloc(x,u)
+#define STBTT_free(x,u)    nk_stbtt_free(x,u)
+
+#endif // STBTT_malloc
+
+#endif // NK_INCLUDE_FONT_BAKING
 
 #endif
 
@@ -16419,7 +16433,9 @@ nk_font_bake_pack(struct nk_font_baker *baker,
     /* setup font baker from temporary memory */
     for (config_iter = config_list; config_iter; config_iter = config_iter->next) {
         it = config_iter;
-        do {if (!stbtt_InitFont(&baker->build[i++].info, (const unsigned char*)it->ttf_blob, 0))
+        struct stbtt_fontinfo *font_info = &baker->build[i++].info;
+        font_info->userdata = alloc;
+        do {if (!stbtt_InitFont(font_info, (const unsigned char*)it->ttf_blob, 0))
             return nk_false;
         } while ((it = it->n) != config_iter);
     }
@@ -28197,9 +28213,9 @@ nk_color_picker(struct nk_context *ctx, struct nk_colorf color,
  *                          COMBO
  *
  * ===============================================================*/
-NK_INTERN int
+NK_INTERN nk_bool
 nk_combo_begin(struct nk_context *ctx, struct nk_window *win,
-    struct nk_vec2 size, int is_clicked, struct nk_rect header)
+    struct nk_vec2 size, nk_bool is_clicked, struct nk_rect header)
 {
     struct nk_window *popup;
     int is_open = 0;
@@ -28293,7 +28309,7 @@ nk_combo_begin_text(struct nk_context *ctx, const char *selected, int len,
             sym = style->combo.sym_hover;
         else if (is_clicked)
             sym = style->combo.sym_active;
-        else 
+        else
             sym = style->combo.sym_normal;
 
         /* represents whether or not the combo's button symbol should be drawn */
@@ -28840,9 +28856,9 @@ NK_API void nk_combo_close(struct nk_context *ctx)
 {
     nk_contextual_close(ctx);
 }
-NK_API nk_bool
+NK_API int
 nk_combo(struct nk_context *ctx, const char **items, int count,
-    nk_bool selected, int item_height, struct nk_vec2 size)
+    int selected, int item_height, struct nk_vec2 size)
 {
     int i = 0;
     int max_height;
@@ -28870,9 +28886,9 @@ nk_combo(struct nk_context *ctx, const char **items, int count,
     }
     return selected;
 }
-NK_API nk_bool
+NK_API int
 nk_combo_separator(struct nk_context *ctx, const char *items_separated_by_separator,
-    int separator, nk_bool selected, int count, int item_height, struct nk_vec2 size)
+    int separator, int selected, int count, int item_height, struct nk_vec2 size)
 {
     int i;
     int max_height;
@@ -28919,15 +28935,15 @@ nk_combo_separator(struct nk_context *ctx, const char *items_separated_by_separa
     }
     return selected;
 }
-NK_API nk_bool
+NK_API int
 nk_combo_string(struct nk_context *ctx, const char *items_separated_by_zeros,
-    nk_bool selected, int count, int item_height, struct nk_vec2 size)
+    int selected, int count, int item_height, struct nk_vec2 size)
 {
     return nk_combo_separator(ctx, items_separated_by_zeros, '\0', selected, count, item_height, size);
 }
-NK_API nk_bool
+NK_API int
 nk_combo_callback(struct nk_context *ctx, void(*item_getter)(void*, int, const char**),
-    void *userdata, nk_bool selected, int count, int item_height, struct nk_vec2 size)
+    void *userdata, int selected, int count, int item_height, struct nk_vec2 size)
 {
     int i;
     int max_height;
@@ -28960,19 +28976,19 @@ nk_combo_callback(struct nk_context *ctx, void(*item_getter)(void*, int, const c
 }
 NK_API void
 nk_combobox(struct nk_context *ctx, const char **items, int count,
-    nk_bool *selected, int item_height, struct nk_vec2 size)
+    int *selected, int item_height, struct nk_vec2 size)
 {
     *selected = nk_combo(ctx, items, count, *selected, item_height, size);
 }
 NK_API void
 nk_combobox_string(struct nk_context *ctx, const char *items_separated_by_zeros,
-    nk_bool *selected, int count, int item_height, struct nk_vec2 size)
+    int *selected, int count, int item_height, struct nk_vec2 size)
 {
     *selected = nk_combo_string(ctx, items_separated_by_zeros, *selected, count, item_height, size);
 }
 NK_API void
 nk_combobox_separator(struct nk_context *ctx, const char *items_separated_by_separator,
-    int separator,nk_bool *selected, int count, int item_height, struct nk_vec2 size)
+    int separator, int *selected, int count, int item_height, struct nk_vec2 size)
 {
     *selected = nk_combo_separator(ctx, items_separated_by_separator, separator,
                                     *selected, count, item_height, size);
@@ -28980,7 +28996,7 @@ nk_combobox_separator(struct nk_context *ctx, const char *items_separated_by_sep
 NK_API void
 nk_combobox_callback(struct nk_context *ctx,
     void(*item_getter)(void* data, int id, const char **out_text),
-    void *userdata, nk_bool *selected, int count, int item_height, struct nk_vec2 size)
+    void *userdata, int *selected, int count, int item_height, struct nk_vec2 size)
 {
     *selected = nk_combo_callback(ctx, item_getter, userdata,  *selected, count, item_height, size);
 }
@@ -29154,6 +29170,8 @@ nk_tooltipfv(struct nk_context *ctx, const char *fmt, va_list args)
 ///    - [yy]: Minor version with non-breaking API and library changes
 ///    - [zz]: Bug fix version with no direct changes to API
 ///
+/// - 2020/10/07 (4.06.0) - Fix nk_combo return type wrongly changed to nk_bool
+/// - 2020/09/05 (4.05.0) - Use the nk_font_atlas allocator for stb_truetype memory management.
 /// - 2020/09/04 (4.04.1) - Replace every boolean int by nk_bool
 /// - 2020/09/04 (4.04.0) - Add nk_bool with NK_INCLUDE_STANDARD_BOOL
 /// - 2020/06/13 (4.03.1) - Fix nk_pool allocation sizes.
